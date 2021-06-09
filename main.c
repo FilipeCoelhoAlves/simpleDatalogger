@@ -31,6 +31,7 @@ FATFS FatF;		//FatFs work area needed for each volume
 FIL Fil;        //Pointer to the file
 uint16_t bw;    //Pointer to fatfs return
 BMP bmp;
+char filename[13]="";
 
 int main(void){
     ioinit();          //start uC hardware
@@ -47,21 +48,21 @@ int main(void){
     serialSendInt(bmp.pressure,DEC,1);
     serialStringLN_P(PSTR("Temperatura Atual:"));
     serialSendFloat(bmp.temperature/10.0,1);
-    uint8_t minutes=RTC.minute;
     ds3231UpdateStruct();
+    uint8_t log=1;
+
+
     while(1){
 
-            while(RTC.minute-minutes<1){
-                _delay_ms(2000);
-                _delay_ms(2000);
-                _delay_ms(2000);
-                _delay_ms(2000);
-                _delay_ms(2000);
-                ds3231UpdateStruct();
-            }
-        datalog();
-        minutes=RTC.minute;
         ds3231UpdateStruct();
+        if(RTC.minute&log){
+            datalog();
+            log=0;
+        }
+        if(!((RTC.minute&0x01)|log)){
+            log=1;
+        }
+
     }
     return 0;
 }
@@ -180,12 +181,14 @@ void sdcardTest(void){
 
 void datalog(void){
     uint8_t result=0;
+    bmpData(&bmp);
+    sprintf(filename,"%d%d%d.txt",RTC.year,RTC.month,RTC.monthday);
     result=f_mount(&FatF,"",DRV_MMC);
     fatfsStatusToSerial(result);
-    result=f_open(&Fil, "dados.txt",FA_OPEN_APPEND|FA_WRITE);
+    result=f_open(&Fil,filename,FA_OPEN_APPEND|FA_WRITE);
     fatfsStatusToSerial(result);
     if(result){
-        result=f_open(&Fil, "dados.txt",FA_CREATE_NEW|FA_WRITE);
+        result=f_open(&Fil,filename,FA_CREATE_NEW|FA_WRITE);
         fatfsStatusToSerial(result);
         serialStringLN("criado arquivo");
     }
@@ -194,6 +197,8 @@ void datalog(void){
     sprintf(str,"%d:%d,%ld,%d.%d\r\n",RTC.hour,RTC.minute,bmp.pressure,bmp.temperature/10,bmp.temperature%10);
     result=f_write(&Fil, str, strlen(str), &bw);
     fatfsStatusToSerial(result);
+    _delay_ms(1000);
+    serialSendInt(f_size(&Fil),DEC,1);
     result=f_close(&Fil);// Close the file
     fatfsStatusToSerial(result);
 }
